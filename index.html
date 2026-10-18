@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Сейф — прототип</title>
+<style>
+:root {
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  --bg: #fafafa; --card: #ffffff; --text: #222222; --muted: #777777; --line: #cccccc;
+  --green: #1a7f37; --orange: #9a5b00; --red: #c62828;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1b1b1b; --card: #242424; --text: #e6e6e6; --muted: #9a9a9a; --line: #444444;
+    --green: #5cc16f; --orange: #e0a040; --red: #ef6b6b;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #1b1b1b; --card: #242424; --text: #e6e6e6; --muted: #9a9a9a; --line: #444444;
+  --green: #5cc16f; --orange: #e0a040; --red: #ef6b6b;
+}
+*, *::before, *::after { box-sizing: inherit; }
+html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+body { margin: 0; padding: 12px; background: var(--bg); color: var(--text); font-family: Arial, Helvetica, sans-serif; font-size: 15px; }
+h1 { font-size: 20px; margin: 0 0 4px; }
+h2 { font-size: 17px; margin: 0 0 10px; }
+p { margin: 6px 0; }
+.cols { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
+.col { flex: 1 1 300px; min-width: 0; background: var(--card); border: 1px solid var(--line); padding: 12px; }
+label { display: block; margin: 8px 0 2px; font-size: 14px; }
+input, select { width: 100%; padding: 5px; font: inherit; background: var(--card); color: var(--text); border: 1px solid var(--line); }
+button { font: inherit; padding: 5px 10px; margin: 4px 4px 4px 0; cursor: pointer; background: var(--bg); color: var(--text); border: 1px solid var(--line); }
+.muted { color: var(--muted); font-size: 13px; }
+.ok { color: var(--green); }
+.warn { color: var(--orange); }
+.err { color: var(--red); }
+.code { font-family: monospace; font-size: 26px; letter-spacing: 4px; }
+.log { font-size: 13px; padding-left: 18px; max-height: 300px; overflow-y: auto; }
+.log li { margin-bottom: 4px; }
+hr { border: 0; border-top: 1px solid var(--line); margin: 10px 0; }
+</style>
+</head>
+<body>
+<h1>Сейф — безопасная сделка с рук</h1>
+<div class="muted">прототип, цифровой рубль эмулируется · <button data-act="reset">сбросить</button></div>
+
+<div class="cols">
+  <div class="col" id="p-seller"></div>
+  <div class="col" id="p-buyer"></div>
+  <div class="col" id="p-contract"></div>
+</div>
+
+<script>
+const KEY = 'seif-proto-v2';
+const BASE_TIME = new Date(2026, 9, 12, 14, 0).getTime();
+
+function freshState() {
+  return {
+    minutes: 0,
+    buyer: { balance: 50000 },
+    seller: { balance: 3000 },
+    deal: null,
+    log: [],
+    showCode: false,
+    codeError: '',
+    reserveError: ''
+  };
+}
+
+function load() {
+  try {
+    const v = localStorage.getItem(KEY);
+    if (v) return JSON.parse(v);
+  } catch (e) {}
+  return null;
+}
+
+function save() {
+  try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {}
+}
+
+let S = load() || freshState();
+
+const STATUS = {
+  created: 'ждёт резерва',
+  reserved: 'деньги в сейфе',
+  refusal: 'покупатель отказался',
+  dispute: 'спор',
+  done: 'завершена',
+  refunded: 'деньги возвращены',
+  cancelled: 'отменена'
+};
+
+const MONTHS = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+
+const $ = s => document.querySelector(s);
+const rub = n => Math.round(n).toLocaleString('ru-RU') + '\u00a0₽';
+const now = () => BASE_TIME + S.minutes * 60000;
+
+function fmtTime(t) {
+  const d = new Date(t);
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${d.getDate()} ${MONTHS[d.getMonth()]} ${hh}:${mm}`;
+}
+
+function esc(s) {
+  return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+function addLog(text) { S.log.unshift({ t: now(), text }); }
+function tick(min) { S.minutes += min; }
+
+
+// ---- сделка ----
+
+function createDeal(item, price, hours) {
+  S.deal = {
+    id: Math.random().toString(36).slice(2, 8).toUpperCase(),
+    item,
+    price,
+    hours,
+    status: 'created',
+    expiresAt: null,
+    code: null
+  };
+  tick(2);
+  addLog(`создана сделка «${item}» на ${rub(price)}`);
+}
+
+function reserve() {
+  const d = S.deal;
+  if (S.buyer.balance < d.price) return 'не хватает денег на кошельке';
+
+  S.buyer.balance -= d.price;
+  d.code = String(Math.floor(100000 + Math.random() * 900000));
+  tick(3);
+  d.expiresAt = now() + d.hours * 3600000; // срок идёт с момента резерва
+  d.status = 'reserved';
+  addLog(`покупатель зарезервировал ${rub(d.price)}, срок до ${fmtTime(d.expiresAt)}`);
+  return '';
+}
+
+function confirmCode(input) {
+  const d = S.deal;
+  if (input.trim() !== d.code) {
+    tick(1);
+    addLog('неверный код');
+    return 'код не совпадает';
+  }
+  S.seller.balance += d.price;
+  d.status = 'done';
+  tick(2);
+  addLog(`код верный, ${rub(d.price)} ушли продавцу`);
+  return '';
+}
+
+function refuse() {
+  S.deal.status = 'refusal';
+  tick(2);
+  addLog('покупатель отказался от покупки');
+}
+
+function openDispute() {
+  S.deal.status = 'dispute';
+  tick(2);
+  addLog('продавец не согласен, открыт спор');
+}
+
+function resolveDispute(toBuyer) {
+  if (toBuyer) {
+    refund('спор решён в пользу покупателя');
+    return;
+  }
+  S.seller.balance += S.deal.price;
+  S.deal.status = 'done';
+  tick(5);
+  addLog(`спор решён в пользу продавца, ${rub(S.deal.price)} ушли продавцу`);
+}
+
+function refund(reason) {
+  S.buyer.balance += S.deal.price;
+  S.deal.status = 'refunded';
+  tick(2);
+  addLog(`${reason}, ${rub(S.deal.price)} вернулись покупателю`);
+}
+
+function cancelDeal(who) {
+  S.deal.status = 'cancelled';
+  tick(1);
+  addLog(`${who} отменил сделку`);
+}
+
+// если код так и не ввели — деньги обратно покупателю
+function checkExpiry() {
+  const d = S.deal;
+  if (!d) return;
+  if ((d.status === 'reserved' || d.status === 'refusal') && now() >= d.expiresAt) {
+    S.buyer.balance += d.price;
+    d.status = 'refunded';
+    addLog(`срок истёк, ${rub(d.price)} автоматически вернулись покупателю`);
+  }
+}
+
+
+// ---- экраны ----
+
+function dealLine(d) {
+  return `<p><b>${esc(d.item)}</b>, ${rub(d.price)}<br><span class="muted">сделка №${d.id}, статус: ${STATUS[d.status]}</span></p>`;
+}
+
+function sellerView() {
+  const d = S.deal;
+  let h = `<h2>Продавец</h2><p class="muted">кошелёк: ${rub(S.seller.balance)}</p>`;
+
+  if (!d || ['cancelled', 'refunded', 'done'].includes(d.status)) {
+    if (d && d.status === 'done') h += `<p class="ok">получено +${rub(d.price)}</p><hr>`;
+    if (d && d.status !== 'done') h += `<p class="muted">прошлая сделка: ${STATUS[d.status]}</p><hr>`;
+    h += `
+      <label>Товар</label><input id="f-item" value="PlayStation 5" maxlength="60">
+      <label>Цена, ₽</label><input id="f-price" type="number" min="100" step="100" value="30000">
+      <label>Срок после резерва</label>
+      <select id="f-hours"><option value="24">24 ч</option><option value="48">48 ч</option><option value="72">72 ч</option></select>
+      <p><button data-act="create">Создать сделку</button></p>`;
+    return h;
+  }
+
+  h += dealLine(d);
+
+  if (d.status === 'created') {
+    h += `<p>ссылка для покупателя: <code>seif.example/d/${d.id}</code></p>
+      <p class="warn">деньги ещё не в сейфе, товар не отдавать</p>
+      <button data-act="cancel-seller">Отменить</button>`;
+  }
+  if (d.status === 'reserved') {
+    h += `<p class="ok">деньги в сейфе: ${rub(d.price)}</p>
+      <p>введите код покупателя после передачи товара</p>
+      <input id="f-code" inputmode="numeric" maxlength="6" placeholder="код">
+      ${S.codeError ? `<p class="err">${S.codeError}</p>` : ''}
+      <p><button data-act="code">Подтвердить</button></p>
+      <p class="muted">если код не введён до ${fmtTime(d.expiresAt)}, деньги вернутся покупателю</p>`;
+  }
+  if (d.status === 'refusal') {
+    h += `<p class="warn">покупатель отказался</p>
+      <button data-act="accept-refusal">Согласен, вернуть деньги</button>
+      <button data-act="dispute">Не согласен, спор</button>`;
+  }
+  if (d.status === 'dispute') {
+    h += `<p class="warn">спор у банка, деньги заморожены</p>`;
+  }
+  return h;
+}
+
+function buyerView() {
+  const d = S.deal;
+  let h = `<h2>Покупатель</h2><p class="muted">кошелёк: ${rub(S.buyer.balance)}</p>`;
+
+  if (!d) return h + `<p class="muted">нет сделки</p>`;
+  h += dealLine(d);
+
+  if (d.status === 'created') {
+    h += `<p>деньги уйдут продавцу только по вашему коду</p>
+      ${S.reserveError ? `<p class="err">${S.reserveError}</p>` : ''}
+      <button data-act="reserve">Зарезервировать ${rub(d.price)}</button>
+      <button data-act="cancel-buyer">Отказаться</button>`;
+  }
+  if (d.status === 'reserved') {
+    h += S.showCode
+      ? `<p>код для продавца:</p><p class="code">${d.code}</p>`
+      : `<p><button data-act="show-code">Проверил товар, показать код</button></p>`;
+    h += `<button data-act="refuse">Отказаться от покупки</button>`;
+  }
+  if (d.status === 'refusal') h += `<p class="warn">ждём ответа продавца</p>`;
+  if (d.status === 'dispute') h += `<p class="warn">спор у банка</p>`;
+  if (d.status === 'done') h += `<p class="ok">покупка завершена</p>`;
+  if (d.status === 'refunded') h += `<p class="ok">деньги вернулись +${rub(d.price)}</p>`;
+  return h;
+}
+
+function contractView() {
+  const d = S.deal;
+  let h = `<h2>Контракт</h2>
+    <p>статус: <b>${d ? STATUS[d.status] : 'нет сделки'}</b></p>
+    <ol style="padding-left:18px;font-size:14px">
+      <li>при резерве деньги блокируются</li>
+      <li>продавцу - только по коду покупателя</li>
+      <li>не ввели код до срока - возврат покупателю</li>
+      <li>отказ - возврат с согласия продавца или спор</li>
+    </ol>`;
+
+  if (d && d.status === 'dispute') {
+    h += `<p>решение банка:</p>
+      <button data-act="win-buyer">вернуть покупателю</button>
+      <button data-act="win-seller">отдать продавцу</button>`;
+  }
+
+  h += `<hr><p class="muted">время: ${fmtTime(now())}</p>
+    <button data-act="skip">+24 часа</button>
+    <hr><p><b>Журнал</b></p>
+    <ul class="log">${S.log.map(e => `<li>${fmtTime(e.t)} - ${esc(e.text)}</li>`).join('') || '<li class="muted">пусто</li>'}</ul>`;
+  return h;
+}
+
+function render() {
+  $('#p-seller').innerHTML = sellerView();
+  $('#p-buyer').innerHTML = buyerView();
+  $('#p-contract').innerHTML = contractView();
+  save();
+}
+
+
+// ---- клики ----
+
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-act]');
+  if (!b) return;
+  S.codeError = '';
+  S.reserveError = '';
+
+  switch (b.dataset.act) {
+    case 'create': {
+      const item = ($('#f-item').value || 'Товар').trim().slice(0, 60);
+      const price = Math.max(100, Math.round(+$('#f-price').value || 0));
+      createDeal(item, price, +$('#f-hours').value);
+      S.showCode = false;
+      break;
+    }
+    case 'reserve': S.reserveError = reserve(); break;
+    case 'show-code': S.showCode = true; break;
+    case 'code': S.codeError = confirmCode($('#f-code').value); break;
+    case 'refuse': refuse(); break;
+    case 'accept-refusal': refund('продавец согласился на возврат'); break;
+    case 'dispute': openDispute(); break;
+    case 'win-buyer': resolveDispute(true); break;
+    case 'win-seller': resolveDispute(false); break;
+    case 'cancel-seller': cancelDeal('продавец'); break;
+    case 'cancel-buyer': cancelDeal('покупатель'); break;
+    case 'skip':
+      tick(24 * 60);
+      addLog('прошло 24 часа');
+      checkExpiry();
+      break;
+    case 'reset': S = freshState(); break;
+  }
+  render();
+});
+
+render();
+</script>
+</body>
+</html>
