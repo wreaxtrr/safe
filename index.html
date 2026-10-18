@@ -38,6 +38,7 @@ button { font: inherit; padding: 5px 10px; margin: 4px 4px 4px 0; cursor: pointe
 .warn { color: var(--orange); }
 .err { color: var(--red); }
 .code { font-family: monospace; font-size: 26px; letter-spacing: 4px; }
+.link { word-break: break-all; }
 .log { font-size: 13px; padding-left: 18px; max-height: 300px; overflow-y: auto; }
 .log li { margin-bottom: 4px; }
 hr { border: 0; border-top: 1px solid var(--line); margin: 10px 0; }
@@ -45,45 +46,14 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 10px 0; }
 </head>
 <body>
 <h1>Сейф — безопасная сделка с рук</h1>
-<div class="muted">прототип, цифровой рубль эмулируется · <button data-act="reset">сбросить</button></div>
+<div class="muted" id="top"></div>
 
 <div class="cols">
-  <div class="col" id="p-seller"></div>
-  <div class="col" id="p-buyer"></div>
+  <div class="col" id="p-main"></div>
   <div class="col" id="p-contract"></div>
 </div>
 
 <script>
-const KEY = 'seif-proto-v2';
-const BASE_TIME = new Date(2026, 9, 12, 14, 0).getTime();
-
-function freshState() {
-  return {
-    minutes: 0,
-    buyer: { balance: 50000 },
-    seller: { balance: 3000 },
-    deal: null,
-    log: [],
-    showCode: false,
-    codeError: '',
-    reserveError: ''
-  };
-}
-
-function load() {
-  try {
-    const v = localStorage.getItem(KEY);
-    if (v) return JSON.parse(v);
-  } catch (e) {}
-  return null;
-}
-
-function save() {
-  try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {}
-}
-
-let S = load() || freshState();
-
 const STATUS = {
   created: 'ждёт резерва',
   reserved: 'деньги в сейфе',
@@ -94,11 +64,25 @@ const STATUS = {
   cancelled: 'отменена'
 };
 
+const EVENTS = {
+  created: 'сделка создана',
+  reserved: 'деньги зарезервированы',
+  wrong_code: 'неверный код',
+  released: 'деньги ушли продавцу',
+  refused: 'покупатель отказался',
+  refund_agreed: 'возврат по согласию',
+  dispute: 'открыт спор',
+  dispute_auto: 'спор: много неверных кодов',
+  dispute_buyer: 'спор решён в пользу покупателя',
+  dispute_seller: 'спор решён в пользу продавца',
+  expired: 'срок истёк, автовозврат',
+  cancelled: 'сделка отменена'
+};
+
 const MONTHS = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
 
 const $ = s => document.querySelector(s);
-const rub = n => Math.round(n).toLocaleString('ru-RU') + '\u00a0₽';
-const now = () => BASE_TIME + S.minutes * 60000;
+const rub = n => Math.round(n).toLocaleString('ru-RU') + ' ₽';
 
 function fmtTime(t) {
   const d = new Date(t);
@@ -111,98 +95,43 @@ function esc(s) {
   return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
 
-function addLog(text) { S.log.unshift({ t: now(), text }); }
-function tick(min) { S.minutes += min; }
+let token = localStorage.getItem('seif-token');
+const dealId = new URLSearchParams(location.search).get('deal');
+let me = null;
+let deal = null;
+let events = [];
+let code = '';
+let error = '';
 
 
-// ---- сделка ----
+// ---- сервер ----
 
-function createDeal(item, price, hours) {
-  S.deal = {
-    id: Math.random().toString(36).slice(2, 8).toUpperCase(),
-    item,
-    price,
-    hours,
-    status: 'created',
-    expiresAt: null,
-    code: null
-  };
-  tick(2);
-  addLog(`создана сделка «${item}» на ${rub(price)}`);
+async function api(method, path, body) {
+  const r = await fetch(path, {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      'x-token': token || '',
+      'x-admin-key': localStorage.getItem('seif-admin') || ''
+    },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  const data = await r.json();
+  if (!r.ok) throw new Error(typeof data.detail === 'string' ? data.detail : 'проверьте введённые данные');
+  return data;
 }
 
-function reserve() {
-  const d = S.deal;
-  if (S.buyer.balance < d.price) return 'не хватает денег на кошельке';
-
-  S.buyer.balance -= d.price;
-  d.code = String(Math.floor(100000 + Math.random() * 900000));
-  tick(3);
-  d.expiresAt = now() + d.hours * 3600000; // срок идёт с момента резерва
-  d.status = 'reserved';
-  addLog(`покупатель зарезервировал ${rub(d.price)}, срок до ${fmtTime(d.expiresAt)}`);
-  return '';
-}
-
-function confirmCode(input) {
-  const d = S.deal;
-  if (input.trim() !== d.code) {
-    tick(1);
-    addLog('неверный код');
-    return 'код не совпадает';
+async function load() {
+  if (!token) return;
+  me = await api('GET', '/me');
+  if (dealId) {
+    deal = await api('GET', '/deals/' + dealId);
+    events = await api('GET', `/deals/${dealId}/events`);
   }
-  S.seller.balance += d.price;
-  d.status = 'done';
-  tick(2);
-  addLog(`код верный, ${rub(d.price)} ушли продавцу`);
-  return '';
 }
 
-function refuse() {
-  S.deal.status = 'refusal';
-  tick(2);
-  addLog('покупатель отказался от покупки');
-}
-
-function openDispute() {
-  S.deal.status = 'dispute';
-  tick(2);
-  addLog('продавец не согласен, открыт спор');
-}
-
-function resolveDispute(toBuyer) {
-  if (toBuyer) {
-    refund('спор решён в пользу покупателя');
-    return;
-  }
-  S.seller.balance += S.deal.price;
-  S.deal.status = 'done';
-  tick(5);
-  addLog(`спор решён в пользу продавца, ${rub(S.deal.price)} ушли продавцу`);
-}
-
-function refund(reason) {
-  S.buyer.balance += S.deal.price;
-  S.deal.status = 'refunded';
-  tick(2);
-  addLog(`${reason}, ${rub(S.deal.price)} вернулись покупателю`);
-}
-
-function cancelDeal(who) {
-  S.deal.status = 'cancelled';
-  tick(1);
-  addLog(`${who} отменил сделку`);
-}
-
-// если код так и не ввели — деньги обратно покупателю
-function checkExpiry() {
-  const d = S.deal;
-  if (!d) return;
-  if ((d.status === 'reserved' || d.status === 'refusal') && now() >= d.expiresAt) {
-    S.buyer.balance += d.price;
-    d.status = 'refunded';
-    addLog(`срок истёк, ${rub(d.price)} автоматически вернулись покупателю`);
-  }
+function openDeal(id) {
+  location.href = id ? '?deal=' + id : location.pathname;
 }
 
 
@@ -212,64 +141,63 @@ function dealLine(d) {
   return `<p><b>${esc(d.item)}</b>, ${rub(d.price)}<br><span class="muted">сделка №${d.id}, статус: ${STATUS[d.status]}</span></p>`;
 }
 
+function loginView() {
+  return `<h2>Вход</h2>
+    <label>Ваше имя</label><input id="f-name" maxlength="50">
+    <p><button data-act="login">Войти</button></p>
+    <p class="muted">для демо на кошелёк начислят ${rub(50000)}</p>`;
+}
+
+function homeView() {
+  return `<h2>Продать</h2>
+    <label>Товар</label><input id="f-item" value="PlayStation 5" maxlength="60">
+    <label>Цена, ₽</label><input id="f-price" type="number" min="100" step="100" value="30000">
+    <label>Срок после резерва</label>
+    <select id="f-hours"><option value="24">24 ч</option><option value="48">48 ч</option><option value="72">72 ч</option></select>
+    <p><button data-act="create">Создать сделку</button></p>
+    <hr><h2>Купить</h2>
+    <label>Номер сделки</label><input id="f-deal" maxlength="8">
+    <p><button data-act="open">Открыть</button></p>`;
+}
+
 function sellerView() {
-  const d = S.deal;
-  let h = `<h2>Продавец</h2><p class="muted">кошелёк: ${rub(S.seller.balance)}</p>`;
-
-  if (!d || ['cancelled', 'refunded', 'done'].includes(d.status)) {
-    if (d && d.status === 'done') h += `<p class="ok">получено +${rub(d.price)}</p><hr>`;
-    if (d && d.status !== 'done') h += `<p class="muted">прошлая сделка: ${STATUS[d.status]}</p><hr>`;
-    h += `
-      <label>Товар</label><input id="f-item" value="PlayStation 5" maxlength="60">
-      <label>Цена, ₽</label><input id="f-price" type="number" min="100" step="100" value="30000">
-      <label>Срок после резерва</label>
-      <select id="f-hours"><option value="24">24 ч</option><option value="48">48 ч</option><option value="72">72 ч</option></select>
-      <p><button data-act="create">Создать сделку</button></p>`;
-    return h;
-  }
-
-  h += dealLine(d);
+  const d = deal;
+  let h = `<h2>Продавец</h2>` + dealLine(d);
 
   if (d.status === 'created') {
-    h += `<p>ссылка для покупателя: <code>seif.example/d/${d.id}</code></p>
+    h += `<p>ссылка для покупателя:<br><code class="link">${esc(location.href)}</code></p>
       <p class="warn">деньги ещё не в сейфе, товар не отдавать</p>
-      <button data-act="cancel-seller">Отменить</button>`;
+      <button data-act="cancel">Отменить</button>`;
   }
   if (d.status === 'reserved') {
     h += `<p class="ok">деньги в сейфе: ${rub(d.price)}</p>
       <p>введите код покупателя после передачи товара</p>
       <input id="f-code" inputmode="numeric" maxlength="6" placeholder="код">
-      ${S.codeError ? `<p class="err">${S.codeError}</p>` : ''}
       <p><button data-act="code">Подтвердить</button></p>
-      <p class="muted">если код не введён до ${fmtTime(d.expiresAt)}, деньги вернутся покупателю</p>`;
+      <p class="muted">если код не введён до ${fmtTime(d.expires_at)}, деньги вернутся покупателю</p>`;
   }
   if (d.status === 'refusal') {
     h += `<p class="warn">покупатель отказался</p>
       <button data-act="accept-refusal">Согласен, вернуть деньги</button>
       <button data-act="dispute">Не согласен, спор</button>`;
   }
-  if (d.status === 'dispute') {
-    h += `<p class="warn">спор у банка, деньги заморожены</p>`;
-  }
+  if (d.status === 'dispute') h += `<p class="warn">спор у банка, деньги заморожены</p>`;
+  if (d.status === 'done') h += `<p class="ok">получено +${rub(d.price)}</p>`;
+  if (['done', 'refunded', 'cancelled'].includes(d.status)) h += `<p><button data-act="home">Новая сделка</button></p>`;
   return h;
 }
 
 function buyerView() {
-  const d = S.deal;
-  let h = `<h2>Покупатель</h2><p class="muted">кошелёк: ${rub(S.buyer.balance)}</p>`;
-
-  if (!d) return h + `<p class="muted">нет сделки</p>`;
-  h += dealLine(d);
+  const d = deal;
+  let h = `<h2>Покупатель</h2>` + dealLine(d);
 
   if (d.status === 'created') {
     h += `<p>деньги уйдут продавцу только по вашему коду</p>
-      ${S.reserveError ? `<p class="err">${S.reserveError}</p>` : ''}
-      <button data-act="reserve">Зарезервировать ${rub(d.price)}</button>
-      <button data-act="cancel-buyer">Отказаться</button>`;
+      <button data-act="reserve">Зарезервировать ${rub(d.price)}</button>`;
   }
   if (d.status === 'reserved') {
-    h += S.showCode
-      ? `<p>код для продавца:</p><p class="code">${d.code}</p>`
+    h += code
+      ? `<p>код для продавца:</p><p class="code">${code}</p>`
       : `<p><button data-act="show-code">Проверил товар, показать код</button></p>`;
     h += `<button data-act="refuse">Отказаться от покупки</button>`;
   }
@@ -277,11 +205,21 @@ function buyerView() {
   if (d.status === 'dispute') h += `<p class="warn">спор у банка</p>`;
   if (d.status === 'done') h += `<p class="ok">покупка завершена</p>`;
   if (d.status === 'refunded') h += `<p class="ok">деньги вернулись +${rub(d.price)}</p>`;
+  if (d.status === 'cancelled') h += `<p class="muted">продавец отменил сделку</p>`;
+  if (['done', 'refunded', 'cancelled'].includes(d.status)) h += `<p><button data-act="home">На главную</button></p>`;
   return h;
 }
 
+function mainView() {
+  if (!me) return loginView();
+  if (!deal) return homeView();
+  if (me.id === deal.seller_id) return sellerView();
+  if (me.id === deal.buyer_id || deal.status === 'created') return buyerView();
+  return dealLine(deal) + `<p class="muted">у сделки уже есть покупатель</p>`;
+}
+
 function contractView() {
-  const d = S.deal;
+  const d = deal;
   let h = `<h2>Контракт</h2>
     <p>статус: <b>${d ? STATUS[d.status] : 'нет сделки'}</b></p>
     <ol style="padding-left:18px;font-size:14px">
@@ -290,65 +228,112 @@ function contractView() {
       <li>не ввели код до срока - возврат покупателю</li>
       <li>отказ - возврат с согласия продавца или спор</li>
     </ol>`;
+  if (!d) return h;
 
-  if (d && d.status === 'dispute') {
-    h += `<p>решение банка:</p>
+  h += `<hr><p><b>Журнал</b></p>
+    <ul class="log">${events.map(e => `<li>${fmtTime(e.created_at)} - ${EVENTS[e.type]}</li>`).reverse().join('')}</ul>
+    <hr><p><b>Банк (демо)</b></p>
+    <input id="f-admin" type="password" placeholder="ключ администратора">
+    <button data-act="save-key">Сохранить ключ</button>`;
+
+  if (d.status === 'dispute') {
+    h += `<p>решение по спору:</p>
       <button data-act="win-buyer">вернуть покупателю</button>
       <button data-act="win-seller">отдать продавцу</button>`;
   }
-
-  h += `<hr><p class="muted">время: ${fmtTime(now())}</p>
-    <button data-act="skip">+24 часа</button>
-    <hr><p><b>Журнал</b></p>
-    <ul class="log">${S.log.map(e => `<li>${fmtTime(e.t)} - ${esc(e.text)}</li>`).join('') || '<li class="muted">пусто</li>'}</ul>`;
+  if (d.status === 'reserved' || d.status === 'refusal') {
+    h += `<p><button data-act="expire">Срок истёк</button></p>`;
+  }
   return h;
 }
 
 function render() {
-  $('#p-seller').innerHTML = sellerView();
-  $('#p-buyer').innerHTML = buyerView();
+  $('#top').innerHTML = me
+    ? `вы: <b>${esc(me.name)}</b> · кошелёк: ${rub(me.balance)} · <button data-act="logout">выйти</button>`
+    : 'цифровой рубль эмулируется';
+  $('#p-main').innerHTML = (error ? `<p class="err">${esc(error)}</p>` : '') + mainView();
   $('#p-contract').innerHTML = contractView();
-  save();
 }
 
 
 // ---- клики ----
 
-document.addEventListener('click', e => {
-  const b = e.target.closest('[data-act]');
-  if (!b) return;
-  S.codeError = '';
-  S.reserveError = '';
+async function act(name) {
+  const url = '/deals/' + dealId;
 
-  switch (b.dataset.act) {
-    case 'create': {
-      const item = ($('#f-item').value || 'Товар').trim().slice(0, 60);
-      const price = Math.max(100, Math.round(+$('#f-price').value || 0));
-      createDeal(item, price, +$('#f-hours').value);
-      S.showCode = false;
+  switch (name) {
+    case 'login': {
+      const user = await api('POST', '/users', { name: $('#f-name').value.trim() });
+      token = user.token;
+      localStorage.setItem('seif-token', token);
       break;
     }
-    case 'reserve': S.reserveError = reserve(); break;
-    case 'show-code': S.showCode = true; break;
-    case 'code': S.codeError = confirmCode($('#f-code').value); break;
-    case 'refuse': refuse(); break;
-    case 'accept-refusal': refund('продавец согласился на возврат'); break;
-    case 'dispute': openDispute(); break;
-    case 'win-buyer': resolveDispute(true); break;
-    case 'win-seller': resolveDispute(false); break;
-    case 'cancel-seller': cancelDeal('продавец'); break;
-    case 'cancel-buyer': cancelDeal('покупатель'); break;
-    case 'skip':
-      tick(24 * 60);
-      addLog('прошло 24 часа');
-      checkExpiry();
+    case 'logout':
+      localStorage.removeItem('seif-token');
+      openDeal('');
       break;
-    case 'reset': S = freshState(); break;
+    case 'create': {
+      const d = await api('POST', '/deals', {
+        item: $('#f-item').value.trim(),
+        price: Math.round(+$('#f-price').value),
+        hours: +$('#f-hours').value
+      });
+      openDeal(d.id);
+      break;
+    }
+    case 'open': openDeal($('#f-deal').value.trim().toUpperCase()); break;
+    case 'home': openDeal(''); break;
+    case 'reserve': await api('POST', url + '/reserve'); break;
+    case 'show-code': code = (await api('GET', url + '/code')).code; break;
+    case 'code': await api('POST', url + '/confirm', { code: $('#f-code').value.trim() }); break;
+    case 'refuse': await api('POST', url + '/refuse'); break;
+    case 'accept-refusal': await api('POST', url + '/accept-refusal'); break;
+    case 'dispute': await api('POST', url + '/dispute'); break;
+    case 'cancel': await api('POST', url + '/cancel'); break;
+    case 'save-key': localStorage.setItem('seif-admin', $('#f-admin').value.trim()); break;
+    case 'win-buyer': await api('POST', `/admin${url}/resolve`, { to_buyer: true }); break;
+    case 'win-seller': await api('POST', `/admin${url}/resolve`, { to_buyer: false }); break;
+    case 'expire': await api('POST', `/admin${url}/expire-now`); break;
+  }
+}
+
+document.addEventListener('click', async e => {
+  const b = e.target.closest('[data-act]');
+  if (!b) return;
+  error = '';
+  try {
+    await act(b.dataset.act);
+    await load();
+  } catch (err) {
+    error = err.message;
   }
   render();
 });
 
-render();
+async function start() {
+  try {
+    await load();
+  } catch (e) {
+    if (e.message === 'Неизвестный токен') {
+      localStorage.removeItem('seif-token');
+      token = null;
+    } else {
+      error = e.message;
+    }
+  }
+  render();
+}
+
+// раз в 3 секунды подтягиваем действия второй стороны, но не мешаем вводить код
+setInterval(async () => {
+  if (!dealId || document.activeElement.tagName === 'INPUT') return;
+  try {
+    await load();
+    render();
+  } catch (e) {}
+}, 3000);
+
+start();
 </script>
 </body>
 </html>
