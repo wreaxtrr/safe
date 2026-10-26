@@ -3,50 +3,82 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Сейф — прототип</title>
+<title>Сейф — безопасная сделка</title>
 <style>
 :root {
   box-sizing: border-box;
-  padding-top: env(safe-area-inset-top, 0px);
-  padding-bottom: env(safe-area-inset-bottom, 0px);
-  --bg: #fafafa; --card: #ffffff; --text: #222222; --muted: #777777; --line: #cccccc;
-  --green: #1a7f37; --orange: #9a5b00; --red: #c62828;
+  --bg: #eef1f5; --card: #ffffff; --text: #1d2433; --muted: #6b7385; --line: #d8dde6;
+  --accent: #1f4fd1; --accent-text: #ffffff; --accent-soft: #e6ecfb;
+  --top-bg: #1f4fd1; --top-text: #ffffff;
+  --green: #1a7f37; --green-soft: #e3f3e7;
+  --orange: #9a5b00; --orange-soft: #fbefd9;
+  --red: #c62828; --red-soft: #fbe9e9;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #1b1b1b; --card: #242424; --text: #e6e6e6; --muted: #9a9a9a; --line: #444444;
-    --green: #5cc16f; --orange: #e0a040; --red: #ef6b6b;
+    --bg: #14171c; --card: #1d2129; --text: #e6e9ef; --muted: #9aa2b1; --line: #333a46;
+    --accent: #6f97ff; --accent-text: #0d1220; --accent-soft: #222b42;
+    --top-bg: #1c2d5e; --top-text: #e6e9ef;
+    --green: #5cc16f; --green-soft: #1b3022;
+    --orange: #e0a040; --orange-soft: #382c16;
+    --red: #ef6b6b; --red-soft: #3a2121;
   }
 }
 :root[data-theme="dark"] {
-  --bg: #1b1b1b; --card: #242424; --text: #e6e6e6; --muted: #9a9a9a; --line: #444444;
-  --green: #5cc16f; --orange: #e0a040; --red: #ef6b6b;
+  --bg: #14171c; --card: #1d2129; --text: #e6e9ef; --muted: #9aa2b1; --line: #333a46;
+  --accent: #6f97ff; --accent-text: #0d1220; --accent-soft: #222b42;
+  --top-bg: #1c2d5e; --top-text: #e6e9ef;
+  --green: #5cc16f; --green-soft: #1b3022;
+  --orange: #e0a040; --orange-soft: #382c16;
+  --red: #ef6b6b; --red-soft: #3a2121;
 }
 *, *::before, *::after { box-sizing: inherit; }
-html { scroll-padding-top: env(safe-area-inset-top, 0px); }
-body { margin: 0; padding: 12px; background: var(--bg); color: var(--text); font-family: Arial, Helvetica, sans-serif; font-size: 15px; }
-h1 { font-size: 20px; margin: 0 0 4px; }
-h2 { font-size: 17px; margin: 0 0 10px; }
-p { margin: 6px 0; }
-.cols { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
-.col { flex: 1 1 300px; min-width: 0; background: var(--card); border: 1px solid var(--line); padding: 12px; }
-label { display: block; margin: 8px 0 2px; font-size: 14px; }
-input, select { width: 100%; padding: 5px; font: inherit; background: var(--card); color: var(--text); border: 1px solid var(--line); }
-button { font: inherit; padding: 5px 10px; margin: 4px 4px 4px 0; cursor: pointer; background: var(--bg); color: var(--text); border: 1px solid var(--line); }
+body { margin: 0; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; font-size: 15px; }
+
+.top { background: var(--top-bg); color: var(--top-text); padding: 12px 16px; padding-top: calc(12px + env(safe-area-inset-top, 0px)); }
+.top-in { max-width: 960px; margin: 0 auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.brand { font-size: 20px; font-weight: bold; }
+.brand span { font-size: 14px; font-weight: normal; opacity: 0.8; margin-left: 6px; }
+#top { font-size: 14px; }
+.top button { background: transparent; color: inherit; border-color: currentColor; padding: 3px 10px; margin: 0 0 0 6px; }
+
+.cols { display: flex; flex-wrap: wrap; gap: 12px; max-width: 960px; margin: 16px auto; padding: 0 16px; padding-bottom: env(safe-area-inset-bottom, 0px); }
+.col { flex: 1 1 300px; min-width: 0; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 16px; }
+h2 { font-size: 18px; margin: 0 0 12px; }
+p { margin: 8px 0; }
+label { display: block; margin: 10px 0 4px; font-size: 14px; color: var(--muted); }
+input, select { width: 100%; padding: 8px; font: inherit; background: var(--card); color: var(--text); border: 1px solid var(--line); border-radius: 6px; }
+input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+
+button { font: inherit; padding: 8px 14px; margin: 4px 4px 4px 0; cursor: pointer; background: var(--card); color: var(--text); border: 1px solid var(--line); border-radius: 6px; }
+button:hover { border-color: var(--accent); }
+button.main { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+button.danger { color: var(--red); }
+
+.badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 13px; background: var(--line); color: var(--text); }
+.st-created { background: var(--accent-soft); color: var(--accent); }
+.st-reserved, .st-done { background: var(--green-soft); color: var(--green); }
+.st-refusal, .st-dispute { background: var(--orange-soft); color: var(--orange); }
+
 .muted { color: var(--muted); font-size: 13px; }
-.ok { color: var(--green); }
-.warn { color: var(--orange); }
-.err { color: var(--red); }
-.code { font-family: monospace; font-size: 26px; letter-spacing: 4px; }
+p.ok, p.warn, p.err { padding: 8px 10px; border-radius: 6px; }
+.ok { color: var(--green); background: var(--green-soft); }
+.warn { color: var(--orange); background: var(--orange-soft); }
+.err { color: var(--red); background: var(--red-soft); }
+.code { display: inline-block; font-family: Consolas, monospace; font-size: 30px; letter-spacing: 6px; padding: 6px 16px; border: 2px dashed var(--accent); border-radius: 8px; background: var(--accent-soft); }
 .link { word-break: break-all; }
 .log { font-size: 13px; padding-left: 18px; max-height: 300px; overflow-y: auto; }
 .log li { margin-bottom: 4px; }
-hr { border: 0; border-top: 1px solid var(--line); margin: 10px 0; }
+hr { border: 0; border-top: 1px solid var(--line); margin: 14px 0; }
 </style>
 </head>
 <body>
-<h1>Сейф — безопасная сделка с рук</h1>
-<div class="muted" id="top"></div>
+<header class="top">
+  <div class="top-in">
+    <div class="brand">Сейф<span>безопасная сделка с рук</span></div>
+    <div id="top"></div>
+  </div>
+</header>
 
 <div class="cols">
   <div class="col" id="p-main"></div>
@@ -102,6 +134,7 @@ let deal = null;
 let events = [];
 let code = '';
 let error = '';
+let metrics = null;
 
 
 // ---- сервер ----
@@ -138,13 +171,13 @@ function openDeal(id) {
 // ---- экраны ----
 
 function dealLine(d) {
-  return `<p><b>${esc(d.item)}</b>, ${rub(d.price)}<br><span class="muted">сделка №${d.id}, статус: ${STATUS[d.status]}</span></p>`;
+  return `<p><b>${esc(d.item)}</b>, ${rub(d.price)}<br><span class="muted">сделка №${d.id}</span><br><span class="badge st-${d.status}">${STATUS[d.status]}</span></p>`;
 }
 
 function loginView() {
   return `<h2>Вход</h2>
     <label>Ваше имя</label><input id="f-name" maxlength="50">
-    <p><button data-act="login">Войти</button></p>
+    <p><button class="main" data-act="login">Войти</button></p>
     <p class="muted">для демо на кошелёк начислят ${rub(50000)}</p>`;
 }
 
@@ -154,10 +187,10 @@ function homeView() {
     <label>Цена, ₽</label><input id="f-price" type="number" min="100" step="100" value="30000">
     <label>Срок после резерва</label>
     <select id="f-hours"><option value="24">24 ч</option><option value="48">48 ч</option><option value="72">72 ч</option></select>
-    <p><button data-act="create">Создать сделку</button></p>
+    <p><button class="main" data-act="create">Создать сделку</button></p>
     <hr><h2>Купить</h2>
     <label>Номер сделки</label><input id="f-deal" maxlength="8">
-    <p><button data-act="open">Открыть</button></p>`;
+    <p><button class="main" data-act="open">Открыть</button></p>`;
 }
 
 function sellerView() {
@@ -167,23 +200,23 @@ function sellerView() {
   if (d.status === 'created') {
     h += `<p>ссылка для покупателя:<br><code class="link">${esc(location.href)}</code></p>
       <p class="warn">деньги ещё не в сейфе, товар не отдавать</p>
-      <button data-act="cancel">Отменить</button>`;
+      <button class="danger" data-act="cancel">Отменить</button>`;
   }
   if (d.status === 'reserved') {
     h += `<p class="ok">деньги в сейфе: ${rub(d.price)}</p>
       <p>введите код покупателя после передачи товара</p>
       <input id="f-code" inputmode="numeric" maxlength="6" placeholder="код">
-      <p><button data-act="code">Подтвердить</button></p>
+      <p><button class="main" data-act="code">Подтвердить</button></p>
       <p class="muted">если код не введён до ${fmtTime(d.expires_at)}, деньги вернутся покупателю</p>`;
   }
   if (d.status === 'refusal') {
     h += `<p class="warn">покупатель отказался</p>
       <button data-act="accept-refusal">Согласен, вернуть деньги</button>
-      <button data-act="dispute">Не согласен, спор</button>`;
+      <button class="danger" data-act="dispute">Не согласен, спор</button>`;
   }
   if (d.status === 'dispute') h += `<p class="warn">спор у банка, деньги заморожены</p>`;
   if (d.status === 'done') h += `<p class="ok">получено +${rub(d.price)}</p>`;
-  if (['done', 'refunded', 'cancelled'].includes(d.status)) h += `<p><button data-act="home">Новая сделка</button></p>`;
+  if (['done', 'refunded', 'cancelled'].includes(d.status)) h += `<p><button class="main" data-act="home">Новая сделка</button></p>`;
   return h;
 }
 
@@ -193,20 +226,20 @@ function buyerView() {
 
   if (d.status === 'created') {
     h += `<p>деньги уйдут продавцу только по вашему коду</p>
-      <button data-act="reserve">Зарезервировать ${rub(d.price)}</button>`;
+      <button class="main" data-act="reserve">Зарезервировать ${rub(d.price)}</button>`;
   }
   if (d.status === 'reserved') {
     h += code
       ? `<p>код для продавца:</p><p class="code">${code}</p>`
-      : `<p><button data-act="show-code">Проверил товар, показать код</button></p>`;
-    h += `<button data-act="refuse">Отказаться от покупки</button>`;
+      : `<p><button class="main" data-act="show-code">Проверил товар, показать код</button></p>`;
+    h += `<button class="danger" data-act="refuse">Отказаться от покупки</button>`;
   }
   if (d.status === 'refusal') h += `<p class="warn">ждём ответа продавца</p>`;
   if (d.status === 'dispute') h += `<p class="warn">спор у банка</p>`;
   if (d.status === 'done') h += `<p class="ok">покупка завершена</p>`;
   if (d.status === 'refunded') h += `<p class="ok">деньги вернулись +${rub(d.price)}</p>`;
   if (d.status === 'cancelled') h += `<p class="muted">продавец отменил сделку</p>`;
-  if (['done', 'refunded', 'cancelled'].includes(d.status)) h += `<p><button data-act="home">На главную</button></p>`;
+  if (['done', 'refunded', 'cancelled'].includes(d.status)) h += `<p><button class="main" data-act="home">На главную</button></p>`;
   return h;
 }
 
@@ -221,30 +254,48 @@ function mainView() {
 function contractView() {
   const d = deal;
   let h = `<h2>Контракт</h2>
-    <p>статус: <b>${d ? STATUS[d.status] : 'нет сделки'}</b></p>
+    <p>${d ? `<span class="badge st-${d.status}">${STATUS[d.status]}</span>` : '<span class="muted">сделка не выбрана</span>'}</p>
     <ol style="padding-left:18px;font-size:14px">
       <li>при резерве деньги блокируются</li>
       <li>продавцу - только по коду покупателя</li>
       <li>не ввели код до срока - возврат покупателю</li>
       <li>отказ - возврат с согласия продавца или спор</li>
     </ol>`;
-  if (!d) return h;
 
-  h += `<hr><p><b>Журнал</b></p>
-    <ul class="log">${events.map(e => `<li>${fmtTime(e.created_at)} - ${EVENTS[e.type]}</li>`).reverse().join('')}</ul>
-    <hr><p><b>Банк (демо)</b></p>
+  if (d) {
+    h += `<hr><p><b>Журнал</b></p>
+      <ul class="log">${events.map(e => `<li>${fmtTime(e.created_at)} - ${EVENTS[e.type]}</li>`).reverse().join('')}</ul>`;
+  }
+
+  h += `<hr><p><b>Банк (демо)</b></p>
     <input id="f-admin" type="password" placeholder="ключ администратора">
-    <button data-act="save-key">Сохранить ключ</button>`;
+    <button data-act="save-key">Сохранить ключ</button>
+    <button data-act="metrics">Метрики</button>`;
 
-  if (d.status === 'dispute') {
+  if (d && d.status === 'dispute') {
     h += `<p>решение по спору:</p>
       <button data-act="win-buyer">вернуть покупателю</button>
       <button data-act="win-seller">отдать продавцу</button>`;
   }
-  if (d.status === 'reserved' || d.status === 'refusal') {
+  if (d && (d.status === 'reserved' || d.status === 'refusal')) {
     h += `<p><button data-act="expire">Срок истёк</button></p>`;
   }
-  return h;
+  return h + metricsView();
+}
+
+function metricsView() {
+  if (!metrics) return '';
+  const pct = v => v === null ? '—' : Math.round(v * 100) + '%';
+  return `<ul style="padding-left:18px;font-size:14px">
+    <li>создано сделок: ${metrics.deals_created}</li>
+    <li>зарезервировано: ${metrics.deals_reserved}</li>
+    <li>завершено: ${metrics.deals_done}</li>
+    <li>оборот: ${rub(metrics.done_volume_rub)}</li>
+    <li>создано → резерв: ${pct(metrics.conversion_created_to_reserved)}</li>
+    <li>резерв → завершено: ${pct(metrics.conversion_reserved_to_done)}</li>
+    <li>доля споров: ${pct(metrics.dispute_share)}</li>
+    <li>доля возвратов: ${pct(metrics.refund_share)}</li>
+  </ul>`;
 }
 
 function render() {
@@ -291,6 +342,7 @@ async function act(name) {
     case 'dispute': await api('POST', url + '/dispute'); break;
     case 'cancel': await api('POST', url + '/cancel'); break;
     case 'save-key': localStorage.setItem('seif-admin', $('#f-admin').value.trim()); break;
+    case 'metrics': metrics = await api('GET', '/admin/metrics'); break;
     case 'win-buyer': await api('POST', `/admin${url}/resolve`, { to_buyer: true }); break;
     case 'win-seller': await api('POST', `/admin${url}/resolve`, { to_buyer: false }); break;
     case 'expire': await api('POST', `/admin${url}/expire-now`); break;
